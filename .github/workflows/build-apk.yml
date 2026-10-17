@@ -1,4 +1,4 @@
-name: Build Debug APK
+name: Build Android APK
 
 on:
   push:
@@ -7,45 +7,83 @@ on:
 
 jobs:
   build:
+    name: Build Debug APK
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
 
-      # Capacitor 7 ke atas membutuhkan JDK 21 (bukan 17)
-      - uses: actions/setup-java@v4
+      # Capacitor 6 membutuhkan JDK 17 (Capacitor 7 ke atas baru butuh 21)
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '21'
+          java-version: 17
 
-      - name: Install dependensi
-        run: npm install
+      - name: Siapkan Android SDK dan memori Gradle
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null 2>&1 || true
+          mkdir -p ~/.gradle
+          echo "org.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m" >> ~/.gradle/gradle.properties
 
+      - name: Install dependensi Node
+        run: npm install --no-audit --no-fund
+
+      # Proyek native dibuat ulang oleh Capacitor setiap build, jadi selalu cocok
+      # dengan versi Capacitor di package.json (tidak ada Gradle buatan tangan).
       - name: Buat proyek Android
         run: |
           rm -rf android
           npx cap add android
 
-      - name: Patch AndroidManifest (izin kamera, mic, layar menyala; matikan backup)
-        run: |
-          M=android/app/src/main/AndroidManifest.xml
-          sed -i 's#</manifest>#    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.RECORD_AUDIO" />\n    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />\n    <uses-permission android:name="android.permission.WAKE_LOCK" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n</manifest>#' "$M"
-          sed -i 's/android:allowBackup="true"/android:allowBackup="false"/' "$M"
-          cat "$M"
+      - name: Terapkan kustomisasi DashCam
+        run: python3 scripts/patch-android.py
 
-      - name: Sync web ke Android
+      - name: Sync aset web
         run: npx cap sync android
 
       - name: Build debug APK
         working-directory: android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
+          set +e
+          ./gradlew assembleDebug --stacktrace 2>&1 | tee gradle-build.log
+          code=${PIPESTATUS[0]}
+          exit $code
 
-      - uses: actions/upload-artifact@v4
+      # Jika gagal, tampilkan penyebab sebenarnya (bukan ekor stack trace)
+      - name: Ringkasan penyebab error
+        if: failure()
+        run: |
+          f=android/gradle-build.log
+          if [ -f "$f" ]; then
+            {
+              echo '### Penyebab error Gradle'
+              echo '```'
+              grep -n -B2 -A25 -E 'What went wrong|FAILURE:|error:' "$f" | head -90
+              echo '```'
+            } | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Unggah log build
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          name: DashCam-debug-apk
+          name: dashcam-build-log
+          path: android/gradle-build.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Unggah APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashcam-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
