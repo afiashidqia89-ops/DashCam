@@ -61,6 +61,26 @@ jobs:
       - name: Install Node dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Verify app/build.gradle uses subproject references
+        working-directory: android
+        run: |
+          echo "=== Checking app/build.gradle for stale Maven coordinates ==="
+          if grep -E "implementation\s+'com\.getcapacitor:" app/build.gradle; then
+            echo ""
+            echo "❌ ERROR: app/build.gradle masih memakai Maven coordinates (com.getcapacitor:...)"
+            echo "   ini akan menyebabkan build gagal karena beberapa plugin Capacitor tidak"
+            echo "   dipublish di Maven Central pada patch version tertentu (mis. 6.0.1)."
+            echo ""
+            echo "   Perbaikan:"
+            echo "   1. Download zip terbaru dari assisten"
+            echo "   2. Salin file android/app/build.gradle dari zip baru ke repo Anda"
+            echo "   3. Verifikasi: grep \"com.getcapacitor:\" app/build.gradle  -> harus kosong"
+            echo "   4. Commit & push ulang"
+            exit 1
+          else
+            echo "✓ app/build.gradle sudah benar (menggunakan project(':capacitor-*'))"
+          fi
+
       - name: Sync web assets to native project
         run: npx cap sync android
 
@@ -133,6 +153,15 @@ jobs:
 
       - name: Install Node dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Verify app/build.gradle uses subproject references
+        working-directory: android
+        run: |
+          if grep -E "implementation\s+'com\.getcapacitor:" app/build.gradle; then
+            echo "❌ ERROR: app/build.gradle masih memakai Maven coordinates."
+            echo "   Salin file android/app/build.gradle dari zip terbaru, lalu push ulang."
+            exit 1
+          fi
 
       - name: Sync web assets
         run: npx cap sync android
