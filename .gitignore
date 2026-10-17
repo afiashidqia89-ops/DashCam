@@ -1,13 +1,46 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Capacitor / Android build artifacts
+android/.gradle/
+android/build/
+android/app/build/
+android/captures/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/capacitor-cordova-android-plugins/
+
+# Native binaries (must be regenerated locally)
+android/gradle/wrapper/gradle-wrapper.jar
+
+# IDE
+.idea/
 *.iml
-.gradle/
-/local.properties
-/.idea/
+.vscode/
 .DS_Store
-/build/
-/captures/
-.externalNativeBuild/
-.cxx/
-app/build/
-dist/
-*.jks
+*.swp
+
+# OS
+Thumbs.db
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Keystore (NEVER COMMIT)
 *.keystore
+*.jks
+keystore.properties
+
+# Logs
+*.log
+
+# Build outputs (download directory only)
+www-built/
+dist/
+out/
