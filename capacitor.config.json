@@ -1,0 +1,20 @@
+{
+  "appId": "com.dashcam.app",
+  "appName": "DashCam",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#000000"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 800,
+      "backgroundColor": "#000000",
+      "showSpinner": false,
+      "androidScaleType": "CENTER_CROP"
+    }
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
