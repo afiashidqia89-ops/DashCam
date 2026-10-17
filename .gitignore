@@ -1,2 +1,15 @@
-node_modules
-android
+node_modules/
+npm-debug.log*
+
+# Proyek native dibuat ulang oleh workflow (npx cap add android)
+android/
+
+.idea/
+.vscode/
+.DS_Store
+*.log
+*.keystore
+*.jks
+keystore.properties
+.env
+.env.*
