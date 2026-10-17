@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>DashCam Lite</title>
+<style>
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:#0b0d10;color:#e8eaed;font:15px system-ui,sans-serif}
+body{padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);display:flex;flex-direction:column}
+header{padding:10px 14px;display:flex;justify-content:space-between;align-items:center}
+h1{font-size:17px;margin:0}
+#st{font-size:13px;color:#9aa0a6}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#555;margin-right:6px}
+.rec .dot{background:#e53935;animation:b 1s infinite}
+@keyframes b{50%{opacity:.2}}
+main{flex:1;overflow:auto;padding:0 14px 14px}
+#pv{width:100%;max-height:34vh;background:#000;border-radius:10px;object-fit:cover;display:block}
+button,select{font:inherit;color:inherit;background:#23272e;border:0;border-radius:10px;padding:10px 14px}
+#go{width:100%;margin:12px 0 8px;padding:16px;font-size:18px;background:#1e8e3e}
+.rec #go{background:#c62828}
+.bar{display:flex;gap:8px;margin-bottom:10px}.bar button{flex:1}
+details{background:#14171c;border-radius:10px;padding:10px 12px;margin-bottom:10px}
+summary{cursor:pointer}
+label{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 0}
+small{color:#9aa0a6}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #23272e}
+.row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row button{padding:6px 10px}
+#msg{min-height:20px;color:#ffb74d;font-size:13px;margin:4px 0}
+#dim{position:fixed;inset:0;background:#000;display:none;z-index:9;color:#3c4043;align-items:center;justify-content:center;text-align:center;padding:20px}
+#player{position:fixed;inset:0;background:#000e;display:none;z-index:8;flex-direction:column;gap:10px;padding:14px}
+#player video{flex:1;min-height:0;width:100%;background:#000}
+</style>
+</head>
+<body>
+<header>
+  <h1>DashCam Lite</h1>
+  <div id="st"><span class="dot"></span><span id="stt">Siap</span></div>
+</header>
+<main>
+  <video id="pv" muted playsinline></video>
+  <button id="go">● Mulai rekam</button>
+  <div id="msg"></div>
+  <div class="bar">
+    <button id="dimBtn">Layar gelap</button>
+    <button id="delAll">Hapus semua</button>
+  </div>
+
+  <details id="cfgBox">
+    <summary>Pengaturan</summary>
+    <label>Kualitas
+      <select id="q">
+        <option value="vlow">Sangat rendah (426×240, 10 fps)</option>
+        <option value="low">Rendah (640×360, 15 fps)</option>
+      </select>
+    </label>
+    <label>Rekam suara <input type="checkbox" id="audio"></label>
+    <label>Panjang segmen
+      <select id="seg">
+        <option value="1">1 menit</option>
+        <option value="3">3 menit</option>
+        <option value="5">5 menit</option>
+        <option value="10">10 menit</option>
+      </select>
+    </label>
+    <label>Batas penyimpanan
+      <select id="cap">
+        <option value="200">200 MB</option>
+        <option value="500">500 MB</option>
+        <option value="1000">1 GB</option>
+        <option value="2000">2 GB</option>
+      </select>
+    </label>
+    <label>Tampilkan pratinjau <input type="checkbox" id="preview"></label>
+    <small id="est"></small>
+  </details>
+
+  <details open>
+    <summary>Rekaman <small id="used"></small></summary>
+    <div id="list"></div>
+  </details>
+</main>
+
+<div id="dim"><div>Sedang merekam…<br><small>Ketuk 2 kali untuk kembali</small></div></div>
+<div id="player"><video controls playsinline></video><button id="pclose">Tutup</button></div>
+
+<script>
+(()=>{
+const $=s=>document.querySelector(s);
+const C=window.Capacitor,FS=C&&C.Plugins&&C.Plugins.Filesystem;
+const native=!!(FS&&C.isNativePlatform&&C.isNativePlatform());
+const DIR='EXTERNAL',FOLDER='DashCam';
+const PRESETS={vlow:{w:426,h:240,fps:10,bps:200000},low:{w:640,h:360,fps:15,bps:350000}};
+const DEF={q:'low',audio:false,seg:3,cap:500,preview:true};
+let cfg=Object.assign({},DEF);
+try{Object.assign(cfg,JSON.parse(localStorage.getItem('dc_cfg')||'{}'))}catch(e){}
+
+let stream,rec,segTimer,tick,wl,curName='',segN=0,t0=0,state='idle',resumeOnShow=false,sess=0,writeQ=Promise.resolve(),mime='',ext='webm';
+
+const pad=n=>String(n).padStart(2,'0');
+const stamp=()=>{const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+'_'+pad(d.getHours())+'-'+pad(d.getMinutes())+'-'+pad(d.getSeconds())};
+const mb=b=>(b/1048576).toFixed(1)+' MB';
+const msg=t=>{$('#msg').textContent=t||''};
+const toB64=b=>new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(String(r.result).split(',')[1]);r.onerror=()=>rej(r.error);r.readAsDataURL(b)});
+
+/* ---------- pengaturan ---------- */
+function loadCfgUI(){
+  $('#q').value=cfg.q;$('#audio').checked=cfg.audio;$('#seg').value=String(cfg.seg);
+  $('#cap').value=String(cfg.cap);$('#preview').checked=cfg.preview;estimate();
+}
+function saveCfg(){
+  cfg={q:$('#q').value,audio:$('#audio').checked,seg:+$('#seg').value,cap:+$('#cap').value,preview:$('#preview').checked};
+  try{localStorage.setItem('dc_cfg',JSON.stringify(cfg))}catch(e){}
+  estimate();
+}
+function estimate(){
+  const P=PRESETS[cfg.q],bps=P.bps+(cfg.audio?32000:0);
+  $('#est').textContent='Perkiraan pemakaian: ±'+Math.round(bps*3600/8/1048576)+' MB per jam. Berkas lama dihapus otomatis saat melewati batas.';
+}
+['q','audio','seg','cap','preview'].forEach(id=>$('#'+id).addEventListener('change',saveCfg));
+
+/* ---------- penyimpanan ---------- */
+async function listFiles(){
+  if(!native)return[];
+  try{
+    const r=await FS.readdir({path:FOLDER,directory:DIR});
+    return r.files.filter(f=>/\.(mp4|webm)$/.test(f.name)).sort((a,b)=>a.name<b.name?-1:1);
+  }catch(e){return[]}
+}
+async function prune(){
+  if(!native)return;
+  let fl=await listFiles(),total=fl.reduce((s,f)=>s+(f.size||0),0);
+  const limit=cfg.cap*1048576;
+  while(total>limit&&fl.length>1){
+    const f=fl.shift();
+    try{await FS.deleteFile({path:FOLDER+'/'+f.name,directory:DIR})}catch(e){break}
+    total-=(f.size||0);
+  }
+}
+function download(blob,name){
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),5000);
+}
+
+/* ---------- perekaman ---------- */
+function pickMime(){
+  const l=cfg.audio?['video/mp4;codecs=avc1,mp4a.40.2','video/webm;codecs=vp8,opus','video/webm']:['video/mp4;codecs=avc1','video/webm;codecs=vp8','video/webm'];
+  mime=(window.MediaRecorder&&l.find(m=>MediaRecorder.isTypeSupported(m)))||'';
+  ext=mime.indexOf('mp4')>=0?'mp4':'webm';
+}
+async function wake(){try{if(navigator.wakeLock)wl=await navigator.wakeLock.request('screen')}catch(e){}}
+function unwake(){try{wl&&wl.release()}catch(e){}wl=null}
+
+async function start(){
+  if(state==='rec')return;
+  if(!navigator.mediaDevices||!window.MediaRecorder){msg('Perangkat ini tidak mendukung perekaman video.');return}
+  msg('');pickMime();
+  const P=PRESETS[cfg.q];
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({
+      video:{facingMode:'environment',width:{ideal:P.w},height:{ideal:P.h},frameRate:{ideal:P.fps,max:P.fps}},
+      audio:cfg.audio
+    });
+  }catch(e){msg('Kamera/mikrofon tidak bisa diakses: '+(e.message||e.name));return}
+  $('#pv').srcObject=cfg.preview?stream:null;
+  if(cfg.preview)$('#pv').play().catch(()=>{});
+  await wake();
+  sess++;state='rec';segN=0;t0=Date.now();
+  tick=setInterval(ui,1000);ui();
+  newSeg();
+}
+
+function newSeg(){
+  if(state!=='rec')return;
+  const P=PRESETS[cfg.q],name=stamp()+'-'+String(Date.now()%1000).padStart(3,'0')+'.'+ext,mem=[],my=sess;
+  let first=true;
+  curName=name;segN++;
+  const opts={videoBitsPerSecond:P.bps};
+  if(cfg.audio)opts.audioBitsPerSecond=32000;
+  if(mime)opts.mimeType=mime;
+  try{rec=new MediaRecorder(stream,opts)}catch(e){fail('Gagal memulai perekam: '+e.message);return}
+  const r=rec;
+  r.ondataavailable=e=>{
+    if(!e.data||!e.data.size)return;
+    if(!native){mem.push(e.data);return}
+    const isFirst=first;first=false;const blob=e.data,path=FOLDER+'/'+name;
+    writeQ=writeQ
+      .then(()=>toB64(blob))
+      .then(data=>isFirst?FS.writeFile({path,data,directory:DIR,recursive:true}):FS.appendFile({path,data,directory:DIR}))
+      .catch(err=>fail('Gagal menulis berkas (memori penuh?): '+(err.message||err)));
+  };
+  r.onerror=e=>fail('Kesalahan perekam: '+(e.error&&e.error.message||'tidak diketahui'));
+  r.onstop=async()=>{
+    try{await writeQ}catch(e){}
+    if(!native&&mem.length)download(new Blob(mem,{type:mime||'video/webm'}),name);
+    await prune();
+    if(state==='rec'&&my===sess)newSeg();
+    refreshList();
+  };
+  r.start(2000);
+  segTimer=setTimeout(()=>{if(r.state!=='inactive')r.stop()},cfg.seg*60000);
+}
+
+function fail(t){msg(t);stop()}
+
+function stop(){
+  if(state==='idle')return;
+  state='idle';clearTimeout(segTimer);
+  const r=rec;rec=null;
+  if(r&&r.state!=='inactive'){try{r.stop()}catch(e){}}
+  cleanup();
+}
+function cleanup(){
+  clearInterval(tick);clearTimeout(segTimer);
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  $('#pv').srcObject=null;unwake();curName='';ui();
+}
+
+/* ---------- antarmuka ---------- */
+function ui(){
+  const on=state==='rec';
+  document.body.classList.toggle('rec',on);
+  $('#go').textContent=on?'■ Berhenti':'● Mulai rekam';
+  ['q','audio','seg','cap','preview'].forEach(id=>$('#'+id).disabled=on);
+  if(on){
+    const s=Math.floor((Date.now()-t0)/1000);
+    $('#stt').textContent='REC '+pad(Math.floor(s/60))+':'+pad(s%60)+' · segmen '+segN;
+  }else $('#stt').textContent='Siap';
+}
+
+async function refreshList(){
+  const el=$('#list');el.textContent='';
+  if(!native){el.textContent='Daftar rekaman hanya ada di aplikasi Android. Di browser, tiap segmen diunduh otomatis.';$('#used').textContent='';return}
+  const fl=await listFiles(),total=fl.reduce((s,f)=>s+(f.size||0),0);
+  $('#used').textContent=' · '+fl.length+' berkas, '+mb(total)+' / '+cfg.cap+' MB';
+  if(!fl.length){el.textContent='Belum ada rekaman.';return}
+  fl.slice().reverse().forEach(f=>{
+    const live=state==='rec'&&f.name===curName;
+    const row=document.createElement('div');row.className='row';
+    const sp=document.createElement('span');sp.textContent=f.name+' · '+mb(f.size||0)+(live?' (sedang direkam)':'');
+    row.appendChild(sp);
+    if(!live){
+      const p=document.createElement('button');p.textContent='▶';p.onclick=()=>play(f.name);
+      const d=document.createElement('button');d.textContent='🗑';d.onclick=()=>del(f.name);
+      row.appendChild(p);row.appendChild(d);
+    }
+    el.appendChild(row);
+  });
+}
+async function play(name){
+  try{
+    const u=await FS.getUri({path:FOLDER+'/'+name,directory:DIR});
+    const v=$('#player video');v.src=C.convertFileSrc(u.uri);
+    $('#player').style.display='flex';v.play().catch(()=>{});
+  }catch(e){msg('Tidak bisa memutar: '+(e.message||e))}
+}
+async function del(name){
+  if(!confirm('Hapus '+name+'?'))return;
+  try{await FS.deleteFile({path:FOLDER+'/'+name,directory:DIR})}catch(e){msg('Gagal menghapus: '+(e.message||e))}
+  refreshList();
+}
+async function delAll(){
+  if(!native)return;
+  const fl=(await listFiles()).filter(f=>!(state==='rec'&&f.name===curName));
+  if(!fl.length||!confirm('Hapus '+fl.length+' rekaman?'))return;
+  for(const f of fl){try{await FS.deleteFile({path:FOLDER+'/'+f.name,directory:DIR})}catch(e){}}
+  refreshList();
+}
+
+$('#go').onclick=()=>state==='rec'?stop():start();
+$('#delAll').onclick=delAll;
+$('#pclose').onclick=()=>{const v=$('#player video');v.pause();v.removeAttribute('src');v.load();$('#player').style.display='none'};
+$('#dimBtn').onclick=()=>{$('#dim').style.display='flex'};
+$('#dim').addEventListener('dblclick',()=>{$('#dim').style.display='none'});
+let lastTap=0;
+$('#dim').addEventListener('touchend',()=>{const n=Date.now();if(n-lastTap<350)$('#dim').style.display='none';lastTap=n});
+
+/* Android menghentikan kamera saat aplikasi tidak terlihat: simpan segmen, lanjut saat kembali. */
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden&&state==='rec'){resumeOnShow=true;msg('Aplikasi di latar belakang: rekaman dijeda.');stop()}
+  else if(!document.hidden&&resumeOnShow){resumeOnShow=false;msg('');start()}
+});
+
+loadCfgUI();ui();refreshList();
+})();
+</script>
+</body>
+</html>
