@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="description" content="DashCam — perekam perjalanan hemat memori" />
+  <title>DashCam</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" type="image/png" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Camera preview -->
+  <video id="video" autoplay playsinline muted></video>
+
+  <!-- Gradient overlays -->
+  <div class="overlay-top"></div>
+  <div class="overlay-bottom"></div>
+
+  <!-- REC indicator -->
+  <div id="rec-indicator" class="rec-indicator hidden">
+    <span class="rec-dot"><span class="rec-dot-ping"></span><span class="rec-dot-core"></span></span>
+    <span class="rec-text">REC</span>
+  </div>
+
+  <!-- App identity -->
+  <div class="app-identity">
+    <div class="app-logo"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16">
+      <path d="M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z"/>
+    </svg></div>
+    <div class="app-info">
+      <div class="app-name">DashCam</div>
+      <div class="app-quality" id="quality-label">Low · 480p · 400kbps</div>
+    </div>
+  </div>
+
+  <!-- Status chips -->
+  <div class="status-chips">
+    <div class="chip-row">
+      <span id="battery-chip" class="chip hidden"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M1 9h2v6H1V9zm4-3h13c.55 0 1 .45 1 1v10c0 .55-.45 1-1 1H5c-.55 0-1-.45-1-1V7c0-.55.45-1 1-1z"/></svg><span id="battery-text"></span></span>
+      <span id="live-chip" class="chip chip-error">ERROR</span>
+    </div>
+    <div class="chip-row">
+      <span id="gps-chip" class="chip chip-amber"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg> NO GPS</span>
+    </div>
+  </div>
+
+  <!-- GPS readout (left side) -->
+  <div id="gps-readout" class="gps-readout hidden"></div>
+
+  <!-- Bottom overlay -->
+  <div class="bottom-overlay">
+    <div class="info-row">
+      <div class="time-block">
+        <div class="time" id="time">--:--:--</div>
+        <div class="date" id="date">----</div>
+      </div>
+      <div class="duration-block">
+        <div class="duration" id="duration">00:00</div>
+        <div class="duration-label" id="duration-label">STANDBY</div>
+      </div>
+    </div>
+
+    <div class="storage-row">
+      <svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>
+      <span id="file-count">0 file</span>
+      <div class="storage-bar"><div class="storage-bar-fill" id="storage-bar"></div></div>
+      <span id="storage-text" class="tabular">0 B</span>
+    </div>
+
+    <div class="control-bar" id="control-bar">
+      <button class="control-btn" data-action="gallery" aria-label="Galeri">
+        <span class="control-icon" id="gallery-badge-wrap">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zm0 4v10h16V8H4zm2 2h12v2H6v-2zm0 4h12v2H6v-2z"/></svg>
+        </span>
+        <span class="control-label">Galeri</span>
+      </button>
+      <button class="control-btn" data-action="camera" aria-label="Nyalakan Kamera">
+        <span class="control-icon">
+          <svg id="camera-icon" viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        </span>
+        <span class="control-label" id="camera-label">Nyalakan</span>
+      </button>
+      <button class="control-btn record-btn" data-action="record" aria-label="Mulai rekaman">
+        <span class="record-circle" id="record-circle">
+          <span class="record-inner" id="record-inner"></span>
+        </span>
+        <span class="control-label" id="record-label">REC</span>
+      </button>
+      <button class="control-btn" data-action="emergency" aria-label="Emergency Save" disabled>
+        <span class="control-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M11 21h-1l1-7H7.5c-.58 0-.57-.32-.38-.66.19-.34.05-.08.07-.12C8.48 10.94 10.42 7.54 13 3h1l-1 7h3.5c.49 0 .56.33.47.7l-.07.15C12.96 17.42 11 21 11 21z"/></svg>
+        </span>
+        <span class="control-label">Emergency</span>
+      </button>
+      <button class="control-btn" data-action="switch" aria-label="Switch Camera">
+        <span class="control-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M20 4h-3.17L15 2H9L7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zM10.2 19.5v-2.6c-2.2-.4-4-2.2-4.4-4.4h2.6v-1.9H5.5v-1.5h2.6c.4-2.2 2.2-4 4.4-4.4v2.6h1.9V5.5c2.2.4 4 2.2 4.4 4.4h-2.6v1.9h2.6v1.5h-2.6c-.4 2.2-2.2 4-4.4 4.4v2.6h-1.9z"/></svg>
+        </span>
+        <span class="control-label">Switch</span>
+      </button>
+      <button class="control-btn" data-action="settings" aria-label="Atur">
+        <span class="control-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.49-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94 0 .31.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        </span>
+        <span class="control-label">Atur</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Error banner -->
+  <div id="error-banner" class="error-banner hidden">
+    <svg viewBox="0 0 24 24" fill="currentColor" width="32" height="32" class="error-icon">
+      <path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>
+    </svg>
+    <div class="error-title">Kamera tidak tersedia</div>
+    <div class="error-msg" id="error-msg"></div>
+    <button class="retry-btn" data-action="retry">Coba lagi</button>
+  </div>
+
+  <!-- Gallery Modal -->
+  <div id="gallery-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Rekaman Tersimpan <span class="badge" id="gallery-count">0</span></h2>
+        <button class="close-btn" data-action="close-gallery">×</button>
+      </div>
+      <div class="gallery-body">
+        <div class="gallery-list" id="gallery-list">
+          <div class="empty-state">
+            <svg viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            <p>Belum ada rekaman. Mulai merekam dengan menekan tombol merah.</p>
+          </div>
+        </div>
+        <div class="gallery-preview" id="gallery-preview">
+          <div class="empty-state">
+            <p>Pilih rekaman untuk pratinjau.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="settings-modal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title">Pengaturan DashCam</h2>
+        <button class="close-btn" data-action="close-settings">×</button>
+      </div>
+      <p class="modal-desc">Atur kualitas rekaman agar hemat memori. Perubahan kualitas akan memulai ulang kamera.</p>
+
+      <div class="settings-section">
+        <label class="section-label">Kualitas Rekaman</label>
+        <p class="section-hint">Default <b>Low</b> sudah optimal untuk dashcam: 480p, 400 kbps, ~3 MB per menit.</p>
+        <div class="radio-group" id="quality-group">
+          <label class="radio-card" data-quality="low">
+            <input type="radio" name="quality" value="low" checked />
+            <div class="radio-content">
+              <div class="radio-row">
+                <span class="radio-label">Low</span>
+                <span class="badge">400 kbps</span>
+              </div>
+              <div class="radio-hint">640×480 · 20fps · 480p</div>
+            </div>
+          </label>
+          <label class="radio-card" data-quality="medium">
+            <input type="radio" name="quality" value="medium" />
+            <div class="radio-content">
+              <div class="radio-row">
+                <span class="radio-label">Medium</span>
+                <span class="badge">800 kbps</span>
+              </div>
+              <div class="radio-hint">848×480 · 24fps · 480p wide</div>
+            </div>
+          </label>
+          <label class="radio-card" data-quality="high">
+            <input type="radio" name="quality" value="high" />
+            <div class="radio-content">
+              <div class="radio-row">
+                <span class="radio-label">High</span>
+                <span class="badge">1.5 Mbps</span>
+              </div>
+              <div class="radio-hint">1280×720 · 30fps · 720p</div>
+            </div>
+          </label>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="row-between">
+          <label class="section-label">Panjang Segmen (Loop Recording)</label>
+          <span class="badge" id="segment-value">180s</span>
+        </div>
+        <p class="section-hint">Video dipecah tiap segmen ini. Segmen tak tersimpan yang lebih lama akan ditimpa.</p>
+        <input type="range" id="segment-slider" min="30" max="600" step="30" value="180" />
+        <div class="range-labels"><span>30 detik</span><span>10 menit</span></div>
+      </div>
+
+      <div class="settings-section">
+        <div class="row-between">
+          <label class="section-label">Maks. Segmen Loop</label>
+          <span class="badge" id="maxseg-value">8</span>
+        </div>
+        <p class="section-hint">Berapa segmen tak tersimpan yang dipertahankan. Selebihnya akan dihapus.</p>
+        <input type="range" id="maxseg-slider" min="2" max="20" step="1" value="8" />
+        <div class="range-labels"><span>2 file</span><span>20 file</span></div>
+      </div>
+
+      <div class="settings-section">
+        <label class="section-label" for="gallery-mode">Simpan ke Galeri HP</label>
+        <p class="section-hint">Salinan video muncul di galeri (folder Movies/DashCam). Salinan otomatis ikut terhapus saat loop menimpa segmen lama; yang ditandai/darurat dan yang Anda simpan manual tidak dihapus.</p>
+        <select id="gallery-mode" class="select-input">
+          <option value="all">Semua rekaman (otomatis)</option>
+          <option value="marked">Hanya yang ditandai / darurat</option>
+          <option value="off">Mati (simpan manual)</option>
+        </select>
+      </div>
+
+      <div class="settings-section">
+        <label class="section-label">Tampilan & Sensor</label>
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Audio rekaman</div>
+            <div class="toggle-hint">Aktifkan mikrofon (lebih banyak memori)</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="audio-toggle" /><span class="switch-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Overlay GPS</div>
+            <div class="toggle-hint">Tampilkan koordinat & kecepatan</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="gps-toggle" checked /><span class="switch-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Overlay waktu</div>
+            <div class="toggle-hint">Tampilkan jam & tanggal</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="time-toggle" checked /><span class="switch-slider"></span></label>
+        </div>
+        <div class="toggle-row">
+          <div>
+            <div class="toggle-label">Cermin untuk kamera depan</div>
+            <div class="toggle-hint">Selfie tampilan terbalik saat pakai kamera depan</div>
+          </div>
+          <label class="switch"><input type="checkbox" id="mirror-toggle" checked /><span class="switch-slider"></span></label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="btn-secondary" data-action="close-settings">Tutup</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="app.js"></script>
+</body>
+</html>
