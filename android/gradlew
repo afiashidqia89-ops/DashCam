@@ -1,6 +1,0 @@
-#!/bin/sh
-# Gradle wrapper bootstrap script (simplified for Android projects)
-# If you don't have gradlew in this template, run: gradle wrapper --gradle-version 8.7
-# then commit gradlew + gradlew.bat + gradle/wrapper/gradle-wrapper.jar
-DIR="$(cd "$(dirname "$0")" && pwd)"
-exec gradle -p "$DIR" "$@"
